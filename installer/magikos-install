@@ -39,6 +39,11 @@ CACHYOS_REPOS=-1
 
 LOG_FILE="${MAGIKOS_INSTALL_LOG_FILE:-/tmp/magikos-install.log}"
 PKG_FAILURES=()
+# Repo packages whose dependency closure cannot be satisfied on this host
+# (systemd-bound packages on an OpenRC system, for example). They are
+# reported at the end but never retried through yay, where a repo package
+# could not be fixed anyway.
+PKG_UNRESOLVABLE=()
 TARGET_HOOK_MASKS=()
 
 log() {
@@ -820,6 +825,42 @@ Include = /etc/pacman.d/mirrorlist' /etc/pacman.conf)"
   fi
 }
 
+# Add the [omarchy] repo to "$root"/etc/pacman.conf ("" = live host, $TARGET
+# = chroot). The package set's preferred kernel (linux-omarchy, and its
+# headers) exists only there while pkgs.magikos.org is not live yet, so
+# without this section the kernel lands in the failure report on every fresh
+# system. SigLevel is Optional TrustAll, exactly as the section shipped
+# before the Magikos rename, so no key import is needed. On fresh installs
+# the section is mirrored into the LIVE conf as well: pacstrap resolves
+# transactions against a snapshot of that file (the same reason the
+# [cachyos] section is mirrored).
+enable_omarchy_repo() {
+  local root="$1"
+  local conf="$root/etc/pacman.conf"
+  local section=$'[omarchy]\nSigLevel = Optional TrustAll\nServer = https://pkgs.omarchy.org/stable/$arch'
+  local host_added=0 target_added=0
+
+  if [[ -f $conf ]] && ! grep -qE '^\s*\[omarchy[[:space:]]*\]' "$conf"; then
+    log "Adding the [omarchy] repository (linux-omarchy kernel)"
+    run cp "$conf" "$conf.magikos-bak"
+    write_file "$conf" "$(cat "$conf")"$'\n'"$section"$'\n'
+    if [[ -z $root ]]; then host_added=1; else target_added=1; fi
+  fi
+
+  if [[ -n $root && -f /etc/pacman.conf ]] && ! grep -qE '^\s*\[omarchy[[:space:]]*\]' /etc/pacman.conf; then
+    run cp /etc/pacman.conf /etc/pacman.conf.magikos-bak
+    write_file /etc/pacman.conf "$(cat /etc/pacman.conf)"$'\n'"$section"$'\n'
+    host_added=1
+  fi
+
+  if (( host_added )); then
+    run pacman -Sy --noconfirm || warn "Could not sync the package databases after adding [omarchy]."
+  fi
+  if (( target_added )); then
+    chroot_exec "pacman -Sy --noconfirm" || warn "Could not sync the target databases after adding [omarchy]."
+  fi
+}
+
 # Add the [cachyos] repo ("$root"/etc/pacman.conf, mirrorlist, keyring, sync).
 # $1 is "" for the live host or $TARGET for a fresh-install chroot. Returns
 # nonzero (without touching pacman.conf) when key trust cannot be established,
@@ -1022,6 +1063,7 @@ bootstrap_arch() {
   # settings/apps, the limine hooks) that must resolve as binaries instead of
   # being compiled from the AUR.
   enable_multilib "$TARGET"
+  enable_omarchy_repo "$TARGET"
   if cachyos_wanted "$TARGET/etc/pacman.conf"; then
     enable_cachyos_repos "$TARGET" \
       || warn "Continuing without the CachyOS repositories."
@@ -1606,13 +1648,19 @@ ensure_chroot_dns() {
 }
 
 build_yay_target() {
+  ensure_chroot_dns
+  # Same contract as build_yay_host: the AUR build dependencies go in even
+  # when yay is already present (live media that ships it), otherwise every
+  # makepkg in the target fails on a missing fakeroot.
+  chroot_exec "pacman -S --ask=4 --needed --noconfirm --overwrite '*' git base-devel" || \
+    warn "Could not install the AUR build dependencies in the target; expect AUR build failures."
+
   if chroot_exec "command -v yay" >/dev/null 2>&1; then
     return 0
   fi
 
   log "Building yay from the AUR in the target"
-  ensure_chroot_dns
-  chroot_exec "pacman -S --ask=4 --needed --noconfirm --overwrite '*' git go base-devel"
+  chroot_exec "pacman -S --ask=4 --needed --noconfirm --overwrite '*' go" || true
 
   local home_dir user_q
   user_q=$(printf '%q' "$INSTALL_USER")
@@ -1698,6 +1746,11 @@ finalize_user() {
 }
 
 report_pkg_failures() {
+  if ((${#PKG_UNRESOLVABLE[@]} > 0)); then
+    warn "Packages skipped, unsatisfiable dependencies on this system (${#PKG_UNRESOLVABLE[@]}):"
+    printf '  %s\n' "${PKG_UNRESOLVABLE[@]}"
+    echo
+  fi
   if ((${#PKG_FAILURES[@]} > 0)); then
     warn "Packages that did not install (${#PKG_FAILURES[@]}):"
     printf '  %s\n' "${PKG_FAILURES[@]}"
@@ -1843,15 +1896,36 @@ install_packages_host() {
   # otherwise --noconfirm batch with an unresolvable conflict.
   # --overwrite '*' resolves conflicts like zlib-ng-compat vs zlib.
   if ! run pacman -S --ask=4 --needed --noconfirm --overwrite '*' "${PACKAGE_REPO[@]}"; then
-    warn "Batch install failed for ${#PACKAGE_REPO[@]} repo package(s); retrying per-package."
-    local pkg
+    # A failed batch transaction installs nothing, so the whole set is still
+    # pending. Split it first: a dry run per name separates packages whose
+    # dependency closure this host cannot satisfy (systemd-bound CachyOS
+    # packages on an OpenRC Artix system, for example) from the rest. The
+    # unsatisfiable ones go to PKG_UNRESOLVABLE for the final report and stay
+    # out of the yay pass; everything else still installs in ONE transaction
+    # instead of a per-package retry over the whole set.
+    local pkg resolvable=() unresolvable=()
     for pkg in "${PACKAGE_REPO[@]}"; do
-      if (( DRY_RUN )); then
-        printf '[dry-run] pacman -S --ask=4 --needed %s\n' "$pkg"
-      elif ! pacman -S --ask=4 --needed --noconfirm --overwrite '*' "$pkg" >>"$LOG_FILE" 2>&1; then
-        PKG_FAILURES+=("$pkg")
+      if pacman -S --print --ask=4 --noconfirm "$pkg" >/dev/null 2>&1; then
+        resolvable+=("$pkg")
+      else
+        unresolvable+=("$pkg")
       fi
     done
+    if (( ${#unresolvable[@]} > 0 )); then
+      warn "Packages skipped: unsatisfiable dependencies on this system (${#unresolvable[@]}):"
+      printf '  %s\n' "${unresolvable[@]}"
+      PKG_UNRESOLVABLE+=("${unresolvable[@]}")
+    fi
+    if (( ${#resolvable[@]} > 0 )) && ! run pacman -S --ask=4 --needed --noconfirm --overwrite '*' "${resolvable[@]}"; then
+      warn "Batch install failed for ${#resolvable[@]} repo package(s); retrying per-package."
+      for pkg in "${resolvable[@]}"; do
+        if (( DRY_RUN )); then
+          printf '[dry-run] pacman -S --ask=4 --needed %s\n' "$pkg"
+        elif ! pacman -S --ask=4 --needed --noconfirm --overwrite '*' "$pkg" >>"$LOG_FILE" 2>&1; then
+          PKG_FAILURES+=("$pkg")
+        fi
+      done
+    fi
   fi
 }
 
@@ -1899,12 +1973,20 @@ aur_candidate_names() {
 }
 
 build_yay_host() {
+  # Every AUR build needs base-devel (fakeroot, patch, make, ...) and git, no
+  # matter how yay arrived. Repos that already carry yay hit the early return
+  # below, which used to skip this install and doom every AUR build with
+  # "ERROR: Cannot find the fakeroot binary".
+  if ! run pacman -S --ask=4 --needed --noconfirm --overwrite '*' git base-devel >>"$LOG_FILE" 2>&1; then
+    warn "Could not install the AUR build dependencies (git, base-devel); expect AUR build failures."
+  fi
+
   if command -v yay >/dev/null 2>&1; then
     return 0
   fi
 
   log "Building yay from the AUR (not present on this system)"
-  run pacman -S --ask=4 --needed --noconfirm --overwrite '*' git go base-devel >>"$LOG_FILE" 2>&1 || true
+  run pacman -S --ask=4 --needed --noconfirm --overwrite '*' go >>"$LOG_FILE" 2>&1 || true
 
   local home_dir tmp
   home_dir=$(getent passwd "$INSTALL_USER" | cut -d: -f6)
@@ -2064,6 +2146,7 @@ main() {
   if (( EXISTING_MODE )); then
     plant_magikos_host
     enable_multilib ""
+    enable_omarchy_repo ""
     if cachyos_wanted /etc/pacman.conf; then
       enable_cachyos_repos "" \
         || warn "Continuing without the CachyOS repositories."

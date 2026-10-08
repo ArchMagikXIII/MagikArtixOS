@@ -23,8 +23,8 @@ start_install_log() {
   magikos_log_line "=== Magikos Setup Started: $MAGIKOS_START_TIME ==="
 
   # Detect and log the init system
-  if [[ -f "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos}/install/helpers}/systemd.sh" ]]; then
-    source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos}/install/helpers}/systemd.sh"
+  if [[ -f "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos/install}/helpers}/systemd.sh" ]]; then
+    source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos/install}/helpers}/systemd.sh"
     local init_system
     init_system=$(magikos_detect_init)
     magikos_log_line "Detected init system: $init_system"

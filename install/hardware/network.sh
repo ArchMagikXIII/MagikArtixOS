@@ -1,4 +1,4 @@
-source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos}/install/helpers}/systemd.sh"
+source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos/install}/helpers}/systemd.sh"
 
 # NetworkManager enablement is centralized in enable-services.sh.
 magikos_service_disable iwd

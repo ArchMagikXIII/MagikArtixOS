@@ -10,7 +10,7 @@ if [[ $MACBOOK_MODEL =~ MacBook(8,1|9,1|10,1)|MacBookPro13,[123]|MacBookPro14,[1
   if [[ -f $NVME_DEVICE ]]; then
     echo "Applying NVMe suspend fix..."
 
-    source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos}/install/helpers}/systemd.sh"
+    source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos/install}/helpers}/systemd.sh"
     if magikos_has_systemd; then
       sudo mkdir -p /etc/systemd/system
       sudo tee /etc/systemd/system/magikos-nvme-suspend-fix.service >/dev/null <<'EOF'

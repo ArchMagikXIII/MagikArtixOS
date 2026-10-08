@@ -1,4 +1,4 @@
-source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos}/install/helpers}/systemd.sh"
+source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos/install}/helpers}/systemd.sh"
 magikos_service_enable bluetooth
 
 # AutoEnable stays at its stock default on purpose. It was set to false here to

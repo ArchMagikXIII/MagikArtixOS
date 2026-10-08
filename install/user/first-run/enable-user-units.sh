@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos}/install/helpers}/systemd.sh"
+source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos/install}/helpers}/systemd.sh"
 
 if ! magikos_has_systemd; then
   magikos_skip_systemd "enable-user-units.sh: not a systemd system"

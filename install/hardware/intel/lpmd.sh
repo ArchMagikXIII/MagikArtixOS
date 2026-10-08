@@ -6,7 +6,7 @@ if magikos-hw-intel && magikos-battery-present; then
   cpu_model=$(grep -m1 "^model\s*:" /proc/cpuinfo 2>/dev/null | cut -d: -f2 | tr -d ' ')
   if [[ "$cpu_model" =~ ^(151|154|170|172|183|186|189|191|204)$ ]]; then
     magikos-pkg-add intel-lpmd
-    source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos}/install/helpers}/systemd.sh"
+    source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos/install}/helpers}/systemd.sh"
     magikos_service_enable intel_lpmd
   fi
 fi

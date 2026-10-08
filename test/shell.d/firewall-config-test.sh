@@ -15,6 +15,16 @@ if [[ ${1:-} == status ]]; then
 fi
 STUB
 
+# firewall.sh skips when the running kernel cannot execute iptables; stub a
+# healthy version so the test exercises the configuration path itself.
+cat >"$stub_dir/iptables" <<'STUB'
+#!/bin/bash
+printf 'iptables %s\n' "$*" >>"$TEST_LOG"
+if [[ ${1:-} == --version ]]; then
+  echo 'iptables v1.8.13 (nf_tables)'
+fi
+STUB
+
 cat >"$stub_dir/sed" <<'STUB'
 #!/bin/bash
 printf 'sed %s\n' "$*" >>"$TEST_LOG"

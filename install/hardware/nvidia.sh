@@ -1,5 +1,6 @@
 if lspci | grep -qi 'nvidia'; then
   source "$MAGIKOS_PATH/bin/magikos-pkg-backend"
+  source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos/install}/helpers}/systemd.sh"
 
   # Check which kernel is installed and set the matching headers package, so
   # DKMS builds below have headers present.
@@ -19,7 +20,7 @@ if lspci | grep -qi 'nvidia'; then
     # install, so enabling it here is safe across hardware. Desktop systems
     # with NVIDIA as the only GPU get no benefit and skip this.
     if magikos-hw-nvidia-powerd; then
-      sudo systemctl enable nvidia-powerd.service
+      magikos_service_enable nvidia-powerd.service
     fi
   elif magikos-hw-nvidia-without-gsp; then
     PACKAGES=(nvidia-580xx-dkms nvidia-580xx-utils lib32-nvidia-580xx-utils)

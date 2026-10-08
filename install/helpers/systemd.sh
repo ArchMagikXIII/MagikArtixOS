@@ -43,6 +43,17 @@ magikos_has_runit() {
 
 # --- Service operations ---
 
+# OpenRC and runit register services without the systemd unit suffix, so
+# "snapper-cleanup.timer" or "lightdm.service" must be looked up as
+# "snapper-cleanup" / "lightdm". systemd keeps the full unit name.
+magikos_service_name() {
+  local name="$1"
+  case "$name" in
+    *.service|*.timer|*.socket) name="${name%.*}" ;;
+  esac
+  printf '%s\n' "$name"
+}
+
 # Enable a service (start at boot)
 magikos_service_enable() {
   local service="$1"
@@ -50,8 +61,10 @@ magikos_service_enable() {
   if magikos_has_systemd; then
     systemctl enable "$service" 2>/dev/null || true
   elif magikos_has_openrc; then
+    service="$(magikos_service_name "$service")"
     rc-update add "$service" default 2>/dev/null || true
   elif magikos_has_runit; then
+    service="$(magikos_service_name "$service")"
     if [[ -d "/etc/sv/$service" ]]; then
       mkdir -p /etc/service
       ln -sf "/etc/sv/$service" "/etc/service/$service"
@@ -68,8 +81,10 @@ magikos_service_disable() {
   if magikos_has_systemd; then
     systemctl disable "$service" 2>/dev/null || true
   elif magikos_has_openrc; then
+    service="$(magikos_service_name "$service")"
     rc-update del "$service" default 2>/dev/null || true
   elif magikos_has_runit; then
+    service="$(magikos_service_name "$service")"
     rm -f "/etc/service/$service"
   fi
 }
@@ -82,8 +97,10 @@ magikos_service_mask() {
     systemctl mask "$service" 2>/dev/null || true
   elif magikos_has_openrc; then
     # OpenRC doesn't have a direct mask equivalent; disable is the closest
+    service="$(magikos_service_name "$service")"
     rc-update del "$service" default 2>/dev/null || true
   elif magikos_has_runit; then
+    service="$(magikos_service_name "$service")"
     rm -f "/etc/service/$service"
   fi
 }
@@ -95,8 +112,10 @@ magikos_service_is_active() {
   if magikos_has_systemd; then
     systemctl is-active --quiet "$service" 2>/dev/null
   elif magikos_has_openrc; then
+    service="$(magikos_service_name "$service")"
     rc-service "$service" status 2>/dev/null | grep -q "started"
   elif magikos_has_runit; then
+    service="$(magikos_service_name "$service")"
     [[ -d "/etc/service/$service" ]] && sv status "$service" 2>/dev/null | grep -q "run"
   fi
 }
@@ -108,8 +127,10 @@ magikos_service_stop() {
   if magikos_has_systemd; then
     systemctl stop "$service" 2>/dev/null || true
   elif magikos_has_openrc; then
+    service="$(magikos_service_name "$service")"
     rc-service "$service" stop 2>/dev/null || true
   elif magikos_has_runit; then
+    service="$(magikos_service_name "$service")"
     sv stop "$service" 2>/dev/null || true
   fi
 }

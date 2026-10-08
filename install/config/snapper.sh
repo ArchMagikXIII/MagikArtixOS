@@ -29,7 +29,7 @@ mkdir -p "$(dirname "$SNAPPER_CONF_PATH")"
 printf '%s\n' 'SNAPPER_CONFIGS="root"' >"$SNAPPER_CONF_PATH"
 chmod 0644 "$SNAPPER_CONF_PATH"
 
-source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos}/install/helpers}/systemd.sh"
+source "${MAGIKOS_INSTALL_HELPERS:-${MAGIKOS_INSTALL:-/usr/share/magikos/install}/helpers}/systemd.sh"
 magikos_service_disable snapper-timeline.timer
 magikos_service_enable snapper-cleanup.timer
 # limine-snapper-sync is a MagikOS/CachyOS package with no Debian counterpart,
